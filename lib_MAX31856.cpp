@@ -62,7 +62,8 @@ MAX31856::MAX31856(SPI& _spi, PinName _ncs, uint8_t _type, uint8_t _fltr, uint8_
 
 //*****************************************************************************
 float MAX31856::readTC()
-{    
+{
+    if(isnan(readCJ())) return NAN;
     //Check and see if the MAX31856 is set to conversion mode ALWAYS ON
     if (conversion_mode==0) {   //means that the conversion mode is normally off
         setOneShotMode(CR0_1_SHOT_MODE_ONE_CONVERSION); // turn on the one shot mode for singular conversion
