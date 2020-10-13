@@ -53,17 +53,17 @@
 //*****************************************************************************
 MAX31856::MAX31856(SPI& _spi, PinName _ncs, uint8_t _type, uint8_t _fltr, uint8_t _samples, uint8_t _conversion_mode) : spi(_spi), ncs(_ncs), samples(_samples) {  
     spi.format(8,3); //configure the correct SPI mode to beable to program the registers intially correctly
-    setThermocoupleType(_type);
-    setEmiFilterFreq(_fltr);
-    setNumSamplesAvg(_samples);
-    setConversionMode(_conversion_mode);
+    init_MAX31856 &= setThermocoupleType(_type);
+    init_MAX31856 &= setEmiFilterFreq(_fltr);
+    init_MAX31856 &= setNumSamplesAvg(_samples);
+    init_MAX31856 &= setConversionMode(_conversion_mode);
 }
 
 
 //*****************************************************************************
 float MAX31856::readTC()
 {
-    if(isnan(readCJ())) return NAN;
+    if(!init_MAX31856) return NAN;
     //Check and see if the MAX31856 is set to conversion mode ALWAYS ON
     if (conversion_mode==0) {   //means that the conversion mode is normally off
         setOneShotMode(CR0_1_SHOT_MODE_ONE_CONVERSION); // turn on the one shot mode for singular conversion
@@ -74,7 +74,7 @@ float MAX31856::readTC()
     calculateDelayTime();
     
     //initialize other info for the read functionality
-    uint32_t buf_read[3], buf_write[3] = {ADDRESS_LTCBH_READ, ADDRESS_LTCBM_READ, ADDRESS_LTCBL_READ};
+    uint32_t buf_read[3] = {0}, buf_write[3] = {ADDRESS_LTCBH_READ, ADDRESS_LTCBM_READ, ADDRESS_LTCBL_READ};
     
     //bool read_thermocouple_temp = checkFaultsThermocoupleConnection(); //check and see if there are any faults that prohibit a normal read of the register
     
@@ -86,15 +86,16 @@ float MAX31856::readTC()
             for(int i=0; i<3; i++) buf_read[i] = registerReadByte(buf_write[i]);
             
             //Convert the registers contents into the correct value
-            int32_t temp  = ((buf_read[0] & 0xFF) << 0x18) + ((buf_read[1] & 0xFF) << 0x10) + ((buf_read[2] & 0xFF) << 0x08);   // LTCBH + LTCBM + LTCBL
+            //int32_t temp  = ((buf_read[0] & 0xFF) << 0x18) + ((buf_read[1] & 0xFF) << 0x10) + ((buf_read[2] & 0xFF) << 0x08);   // LTCBH + LTCBM + LTCBL
+            int32_t temp  = ((buf_read[0] & 0xFF) << 11) + ((buf_read[1] & 0xFF) << 3) + ((buf_read[2] & 0xFF) >> 5);   // LTCBH + LTCBM + LTCBL
 
-            return prev_TC = (temp >> 0x0D) * 0.0078125;
+            //return prev_TC = (temp >> 0x0D) * 0.0078125;
+            return prev_TC = temp * 0.0078125;
         }
     //}
     thermocouple_conversion_count++; //iterate the conversion count to speed up time in between future converions in always on mode
     
     //checkFaultsThermocoupleThresholds();  //print any faults to the terminal
-
     return prev_TC;
 }
 
@@ -102,18 +103,29 @@ float MAX31856::readTC()
 //*****************************************************************************
 float MAX31856::readCJ()
 {
-    uint16_t buf_read[3];
+    if(!init_MAX31856) return NAN;
+
+    uint32_t buf_read[2] = {0}, buf_write[2] = {ADDRESS_CJTH_READ, ADDRESS_CJTL_READ};
+    
+    for(int i=0; i<2; i++) buf_read[i] = registerReadByte(buf_write[i]);
+    
+    //Convert the registers contents into the correct value
+    int16_t temp  = ((buf_read[0] & 0xFF) << 8) + (buf_read[1] & 0xFF); // CJTH + CJTL
+    
+    //checkFaultsColdJunctionThresholds(); //print any faults to the terminal
+    return temp/256.0;
+    /*uint16_t buf_read[3];
     
     spiEnable();
-    for(int i=0; i<3; i++) buf_read[i]=spi.write(ADDRESS_CJTH_READ);
+    for(int i=0; i<3; i++) buf_read[i] = spi.write(ADDRESS_CJTH_READ);
     spiDisable();
     
     //Convert the registers contents into the correct value
     int16_t temp  = ((buf_read[1] & 0xFF) << 8) + (buf_read[2] & 0xFF); // CJTH + CJTL
     
     //checkFaultsColdJunctionThresholds(); //print any faults to the terminal
-    
-    return ((temp==0)?NAN:(temp/256.0));
+    printf("\r\nCJ %d", temp);
+    return ((temp==0)?NAN:(temp/256.0));*/
 }
 
 //*****************************************************************************
@@ -576,26 +588,49 @@ void MAX31856::spiDisable()
 //******************************************************************************
 bool MAX31856::registerReadWriteByte(uint8_t read_address, uint8_t write_address, int clear_bits, uint8_t val) 
 {   
-    uint8_t buf_read[2];
+    /*uint8_t buf_read[2];
     
     //Read the current contents of a register
     spiEnable();
-    for(int i=0; i<2; i++) {
-        buf_read[i]=spi.write(read_address);
-    }
+    for(int i=0; i<2; i++) buf_read[i] = spi.write(read_address);
     spiDisable();
     
     //Modify contents pulled from the register 
-    buf_read[1]&=clear_bits;    //Clear the contents of bits of parameter you are trying to clear for later or equal operation
-    buf_read[1]|=val;       //Bitwise OR the input parameter with cleaned buf_read[1] to create new byte
-    val=buf_read[1];
+    buf_read[1] &= clear_bits;    //Clear the contents of bits of parameter you are trying to clear for later or equal operation
+    buf_read[1] |= val;       //Bitwise OR the input parameter with cleaned buf_read[1] to create new byte
+    val = buf_read[1];
     
     //Write the updated byte to the register 
     spiEnable();
-    buf_read[0]=spi.write(write_address);
-    buf_read[1]=spi.write(val);
+    spi.write(write_address);
+    spi.write(val);
     spiDisable();
-    return 1;
+    //return 1;
+
+    // ajout YSI pour verification
+    spiEnable();
+    for(int i=0; i<2; i++) buf_read[i] = spi.write(read_address);
+    spiDisable();
+    return buf_read[1] == val;*/
+
+    // Version YSI
+    uint8_t buf_read;
+    
+    //Read the current contents of a register
+    buf_read = registerReadByte(read_address);
+    
+    //Modify contents pulled from the register 
+    buf_read &= clear_bits;    //Clear the contents of bits of parameter you are trying to clear for later or equal operation
+    buf_read |= val;       //Bitwise OR the input parameter with cleaned buf_read[1] to create new byte
+    val = buf_read;
+    
+    //Write the updated byte to the register 
+    registerWriteByte(write_address, val);
+
+    //Read the current contents of a register
+    buf_read = registerReadByte(read_address);
+
+    return buf_read == val;
 }
 
 
@@ -615,7 +650,7 @@ uint8_t MAX31856::registerReadByte(uint8_t read_address)
 {
     spiEnable();
     spi.write(read_address);
-    uint8_t buf_read=spi.write(0);
+    uint8_t buf_read = spi.write(0);
     spiDisable();
     return buf_read;
 }

@@ -508,6 +508,9 @@ private:
 //*****************************************************************************    
 //Private Members
 //*****************************************************************************        
+    /// YSI ajout variable indiquant si l'initialisation est OK
+    bool init_MAX31856 = true;
+
     /// SPI object
     SPI& spi;
     
