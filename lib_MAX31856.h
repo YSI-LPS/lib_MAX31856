@@ -7,7 +7,7 @@
 *
 * Started: SEPTEMBER 14th 2017
 *
-* Updated: 
+* Updated: Jully 2021 By Yannic Simon
 *
 * @brief Header file for MAX31856 class
 *
@@ -45,9 +45,9 @@
 * ownership rights.
 **********************************************************************/
 
-
 #ifndef MAX31856_h
 #define MAX31856_h
+#include <ctime>
 #include "mbed.h"
 
 //*****************************************************************************
@@ -545,7 +545,7 @@ private:
     ///time in milliseconds that is needed minimum for a new conversion to take place
     uint32_t conversion_time;
 
-    float prev_TC;
+    float prev_TC = NAN;
 };
 
 #endif  /* __MAX31856_H_ */
